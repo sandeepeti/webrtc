@@ -41,12 +41,8 @@ if (room !== "" && room !== null) {
     console.log(`Message from client: Asking to create or join room ${room}`);
     createPeerConnection();
     socket.emit('create or join', room);
-    socket.emit('ipaddr');
 }
 
-socket.on('ipaddr', function (address) {
-    console.log(`Message from client ipaddress: ${address}`);
-});
 
 // if room created
 socket.on('room-created', function (room, clientId) {

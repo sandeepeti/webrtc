@@ -52,14 +52,11 @@ io.sockets.on('connection', function (socket) {
 
             // create key with room name
             _rooms[room] = 0;
-            // _rooms[room][socket.id] = {};
             socket.emit('room-created', room, socket.id);
         } else if (numClients === 1) {
             log(`Client ID ${socket.id} joined room ${room}`);
             socket.join(room);
-            // _rooms[room][socket.id] = {};
             socket.emit('room-joined', room, socket.id);
-            // io.sockets.in(room).emit('ready')
         } else {
             socket.emit('room-full', room);
         }
@@ -92,30 +89,15 @@ io.sockets.on('connection', function (socket) {
 
     socket.on('ice-candidate', function (room, clientId, iceCandidate) {
         log(`client ${clientId}'s icecandidate received`);
-        //let _iceCandidatesReceived = 0;
-        // _rooms[room][clientId][iceCandidate] = iceCandidate;
         socket.to(room).emit('peer-icecandidate', clientId, iceCandidate);
-        // for (var clients in _rooms[room]) {
-        //     if (clients[iceCandidate]) {
-        //         _iceCandidatesReceived += 1;
-        //     }
-        // }
-
-        // // send ice-candidates
-        // if (_iceCandidatesReceived === 2) {
-        //     log(`clients ready to initiate call now`);
-        //     io.sockets.in(room).emit('icecandidates-received', _rooms[room]);
-        // }
     });
 
     socket.on('initiate-call', function(room) {
         log('Peer connection successful');
-        log(`${room}`);
         io.sockets.in(room).emit('peer-ready');
     })
 
     socket.on('ipaddr', function () {
-        log('Message from server: ipaddr');
         var ifaces = os.networkInterfaces();
         for (var dev in ifaces) {
             ifaces[dev].forEach(function (details) {
