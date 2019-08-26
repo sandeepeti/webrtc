@@ -4,24 +4,32 @@
 // else he will create answer
 let isInitiator;
 let clientID;
+let localPeerConnections = {};
 
 const mediaStreamConstraints = {
     video: true,
     audio: true,
 };
 
+
 const offerOptions = {
     offerToReceiveVideo: 1,
 };
 
 let localVideo = document.getElementById('localVideo');
-let remoteVideo = document.getElementById('remoteVideo');
+let remoteVideo1 = document.getElementById('remoteVideo1');
+let remoteVideo2 = document.getElementById('remoteVideo2');
 
 let localStream;
-let remoteStream;
+let remoteStream1;
+let remoteStream2;
+
+// to manage multiple RTCPeerConnections
+let numPeers = 0;
+let peerMappings = {};
 
 // const servers = { 'iceServers': [{ 'urls': 'stun:localhost:8080' }] };
-const servers = { 'iceServers': [{ 'urls': 'stun:stun1.l.google.com:19302'}]};
+const servers = { 'iceServers': [{ 'urls': 'stun:stun1.l.google.com:19302' }] };
 //const servers = null;
 
 let localPeerConnection;
@@ -40,7 +48,7 @@ socket.on('log', function (array) {
 // create or join room
 if (room !== "" && room !== null) {
     console.log(`Message from client: Asking to create or join room ${room}`);
-    createPeerConnection();
+    //createPeerConnection(room);
     socket.emit('create or join', room);
 }
 
@@ -57,46 +65,81 @@ socket.on('room-joined', function (room, clientId) {
     console.log(`Message from client: Joined room ${room} as non-initiator`)
     isInitiator = false;
     clientID = clientId;
-})
+});
 
-// on ready event - send iceCandidate
-socket.on('ready', function () {
-    // create offer if initiator else wait for event offer-created
-    if (isInitiator) {
-        localPeerConnection.createOffer(offerOptions)
-            .then(createdOffer).catch(setSessionDescriptionError);
-    }
+// if room full
+socket.on('room-full', function (room) {
+    alert(`Room '${room}' is full`);
+});
+
+
+socket.on('peer-joined', function (room, peerId) {
+    console.log(`Message from client: ${clientID} creating offer and sending to ${peerId}`);
+    createMultiPeerConnection(room, peerId, null);
+    // localPeerConnections[peerId].createOffer(offerOptions)
+    //     .then((event) => createdOffer(event, room, peerId)).catch(setSessionDescriptionError);
 });
 
 
 // offer-received event
-socket.on('offer-received', function (clientid, description) {
-    if (!isInitiator && clientID != clientid) {
+socket.on('offer-received', function (room, peerId, description) {
+    console.log(`Message from client ${clientID}: Offer received from ${peerId}`)
+    createMultiPeerConnection(room, peerId, description);
+    // setRemoteDescription(description, peerId);
 
-        setRemoteDescription(description);
-
-        // create answer
-        localPeerConnection.createAnswer()
-            .then(createdAnswer)
-            .catch(setSessionDescriptionError);
-    }
+    // // create answer
+    // localPeerConnections[peerId].createAnswer()
+    //     .then((event) => createdAnswer(event, peerId))
+    //     .catch(setSessionDescriptionError);
 });
 
 
-// answer-received event
-socket.on('answer-received', function (clientId, description) {
-    if (isInitiator && clientID != clientId) {
-        setRemoteDescription(description);
-        socket.emit('initiate-call', room);
+function gotLocalMediaStream(mediaStream, room, peerId, description) {
+    console.log(`Message from client(${clientID}): adding local stream`);
+    localVideo.srcObject = mediaStream;
+    localStream = mediaStream;
+    localPeerConnections[peerId].addStream(mediaStream);
+    localPeerConnections[peerId].addEventListener('addstream', gotRemoteMediaStream);
+
+    const videoTracks = localStream.getVideoTracks();
+    const audioTracks = localStream.getAudioTracks();
+    if (videoTracks.length > 0) {
+        console.log(`Message from client: Using video device: ${videoTracks[0].label}.`);
     }
+    if (audioTracks.length > 0) {
+        console.log(`Message from client Using audio device: ${audioTracks[0].label}.`);
+    }
+
+    // emit event that stream added
+    // socket.emit('local-stream-added', room, isInitiator);
+    if (description !== null) {
+        console.log(`Message from client: creating answer`);
+        setRemoteDescription(description, peerId);
+
+        // create answer
+        localPeerConnections[peerId].createAnswer()
+            .then((event) => createdAnswer(event, peerId))
+            .catch(setSessionDescriptionError);
+    } else {
+        console.log(`Message from client: creating offer`);
+        localPeerConnections[peerId].createOffer(offerOptions)
+            .then((event) => createdOffer(event, room, peerId)).catch(setSessionDescriptionError);
+    }
+}
+
+// answer-received event
+socket.on('answer-received', function (peerId, description) {
+    console.log(`Message from client(${clientID}): answer received from ${peerId}`)
+    setRemoteDescription(description, peerId);
+    socket.emit('initiate-call', room);
 });
 
 
 // addIceCandidate
-socket.on('peer-icecandidate', function (clientId, iceCandidate) {
-    console.log(`${clientID} adding peer icecandidate`);
-    if (clientID !== clientId) {
-        localPeerConnection.addIceCandidate(iceCandidate)
+socket.on('peer-icecandidate', function (clientId, peerId, iceCandidate) {
+    console.log(`Message from client (${clientID}): adding peer icecandidate`, iceCandidate);
+    if (clientID !== peerId) {
+        localPeerConnections[peerId].addIceCandidate(iceCandidate)
             .then(handleConnectionSuccess)
             .catch((error) => {
                 handleConnectionFailure(error);
@@ -111,56 +154,71 @@ socket.on('peer-ready', function () {
 });
 
 
-function createPeerConnection() {
-    localPeerConnection = new RTCPeerConnection(servers);
-    localPeerConnection.addEventListener('icecandidate', handleConnection);
-    localPeerConnection.addEventListener('addstream', gotRemoteMediaStream);
-    localPeerConnection.addEventListener('iceconnectionstatechange', handleConnectionChange);
+// function createPeerConnection(room) {
+//     console.log(`Message from client (${clientID}): creating RTCPeerConnection`);
+//     localPeerConnection = new RTCPeerConnection(servers);
+//     localPeerConnection.addEventListener('icecandidate', handleConnection);
+//     localPeerConnection.addEventListener('addstream', gotRemoteMediaStream);
+//     localPeerConnection.addEventListener('iceconnectionstatechange', handleConnectionChange);
+
+//     if (!localStream) {
+//         navigator.mediaDevices.getUserMedia(mediaStreamConstraints)
+//             .then((mediaStream) => gotLocalMediaStream(mediaStream, room)).catch(handleLocalMediaStreamError);
+//         console.log('Message from client: Requesting local stream');
+//     }
+// }
+
+
+function createMultiPeerConnection(room, peerId, description) {
+    console.log(`Message from client (${clientID}): creating RTCPeerConnection`);
+    localPeerConnections[peerId] = new RTCPeerConnection(servers);
+    localPeerConnections[peerId].addEventListener('icecandidate', handleMultiConnection);
+    localPeerConnections[peerId].addEventListener('addstream', gotRemoteMediaStream);
+    localPeerConnections[peerId].addEventListener('iceconnectionstatechange', handleConnectionChange);
 
     navigator.mediaDevices.getUserMedia(mediaStreamConstraints)
-        .then(gotLocalMediaStream).catch(handleLocalMediaStreamError);
+        .then((mediaStream) => gotLocalMediaStream(mediaStream, room, peerId, description)).catch(handleLocalMediaStreamError);
     console.log('Message from client: Requesting local stream');
 }
 
 
 // setRemoteDescription
-function setRemoteDescription(description) {
-    localPeerConnection.setRemoteDescription(description)
+function setRemoteDescription(description, peerId) {
+    console.log(`Message from client (${clientID}): setting remote description ${description}`);
+    localPeerConnections[peerId].setRemoteDescription(description)
         .then(() => {
             console.log('Message from client: remote description set');
         })
         .catch((error) => {
-            console.Error('Message from client: remote description setting failed');
+            console.error('Message from client: remote description setting failed');
         });
 }
 
 // createdOffer 
-function createdOffer(description) {
-    if (isInitiator) {
-        localPeerConnection.setLocalDescription(description)
-            .then(() => {
-                console.log('Message from client: localDescription set');
-                socket.emit('offer', room, clientID, description);
-            })
-            .catch((error) => {
-                console.error('Message from client: Error setting localDescription', error);
-            });
-    }
+function createdOffer(description, room, peerId) {
+    console.log(`Message from client(${clientID}): created offer and sending to ${peerId}`);
+    localPeerConnections[peerId].setLocalDescription(description)
+        .then(() => {
+            console.log(`Message from client${clientID}: localDescription set`);
+            socket.emit('offer', room, clientID, peerId, description);
+        })
+        .catch((error) => {
+            console.error('Message from client: Error setting localDescription', error);
+        });
 }
 
 
 // createdAnswer
-function createdAnswer(description) {
-    if (!isInitiator) {
-        localPeerConnection.setLocalDescription(description)
-            .then(() => {
-                console.log('Message from client: localDescription set')
-                socket.emit('answer', room, clientID, description);
-            })
-            .catch((error) => {
-                console.error('Message from client: Error setting localDescription', error);
-            });
-    }
+function createdAnswer(description, peerId) {
+    console.log(`Message from client(${clientID}): created answer and sending to ${peerId}`);
+    localPeerConnections[peerId].setLocalDescription(description)
+        .then(() => {
+            console.log(`Message from client(${clientID}): localDescription set`)
+            socket.emit('answer', room, clientID, peerId, description);
+        })
+        .catch((error) => {
+            console.error('Message from client: Error setting localDescription', error);
+        });
 }
 
 
@@ -170,67 +228,48 @@ function handleConnection(event) {
 
     if (iceCandidate) {
         const newIceCandidate = new RTCIceCandidate(iceCandidate);
-        console.log('Message from client: Created iceCandidate: ', iceCandidate);
+        console.log(`Message from client(${clientID}): Created iceCandidate`, iceCandidate);
         socket.emit('ice-candidate', room, clientID, newIceCandidate);
     }
 }
 
+function handleMultiConnection(event, peerId) {
+    const iceCandidate = event.candidate;
 
-// on icecandidates-received event both users have sent their 
-// respective ice-candidates to server and we are ready to 
-// add the remote peer's ice-candidate to our peer connection
-// socket.on('icecandidates-received', function (icecandidatesDict) {
-//     console.log('Message from client: peers icecandidate received from server');
-//     for (var client in Object.keys(icecandidatesDict)) {
-//         if (client !== clientID) {
-//             localPeerConnection.addIceCandidate(icecandidatesDict[client][iceCandidate])
-//                 .then(handleConnectionSuccess)
-//                 .catch((error) => {
-//                     handleConnectionFailure(error);
-//                 });
-//         }
-//     }
-// })
+    if (iceCandidate) {
+        const newIceCandidate = new RTCIceCandidate(iceCandidate);
+        console.log(`Message from client(${clientID}): Created iceCandidate`, iceCandidate);
+        socket.emit('ice-candidate', room, clientID, peerId, newIceCandidate);
+    }
+}
 
 function handleConnectionChange(event) {
     console.log('Message from client: ICE state change event: ', event);
 }
 
 
-function gotLocalMediaStream(mediaStream) {
-    localVideo.srcObject = mediaStream;
-    localStream = mediaStream;
-    localPeerConnection.addStream(mediaStream);
-    localPeerConnection.addEventListener('addstream', gotRemoteMediaStream);
-
-    const videoTracks = localStream.getVideoTracks();
-    const audioTracks = localStream.getAudioTracks();
-    if (videoTracks.length > 0) {
-        console.log(`Message from client: Using video device: ${videoTracks[0].label}.`);
-    }
-    if (audioTracks.length > 0) {
-        console.log(`Message from client Using audio device: ${audioTracks[0].label}.`);
-    }
-
-    // emit event that stream added
-    socket.emit('local-stream-added', room, isInitiator);
-}
-
-
 function gotRemoteMediaStream(event) {
+    console.log(`Message from client(${clientID}): remote media stream received`);
     const mediaStream = event.stream;
-    remoteVideo.srcObject = mediaStream;
-    remoteStream = mediaStream;
+    if (!remoteStream1) {
+        console.log(`Message from client(${clientID}): remote stream from peer1 received`);
+        remoteVideo1.srcObject = mediaStream;
+        remoteStream1 = mediaStream;
+    } else {
+        console.log(`Message from client(${clientID}): remote stream from peer2 received`);
+        remoteVideo2.srcObject = mediaStream;
+        remoteStream2 = mediaStream;
+    }
 
-    endCallButton.style.visibility = 'visible';
-    endCallButton.addEventListener('click', endCall);
+    // endCallButton.style.visibility = 'visible';
+    // endCallButton.addEventListener('click', endCall);
 
     console.log('Message from client: Remote peer connection received remote stream.');
 }
 
 
 function endCall() {
-    localPeerConnection.close();
+    localPeerConnections.close();
     localPeerConnection = null;
     remoteVideo.style.visibility = 'hidden';
     endCallButton.style.visibility = 'hidden';
