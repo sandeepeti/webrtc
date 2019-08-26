@@ -1,0 +1,28 @@
+* {
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+
+.videos {
+    width: 100vw;
+    height: 100vh;
+    /* background-color: rebeccapurple; */
+}
+
+#localVideo {
+    width: 15%;
+    position: absolute;
+    bottom: 1%;
+    right: 1%;
+    z-index: 1000;
+}
+
+#remoteVideo {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    min-width: 100%;
+    min-height: 100%;
+}
