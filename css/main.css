@@ -26,3 +26,15 @@
     min-width: 100%;
     min-height: 100%;
 }
+
+#endCallButton {
+    position: absolute;
+    bottom: 10%;
+    left: 50%;
+    color: white;
+    background-color: red;
+    border-radius: 100%;
+    padding: 20px;
+    box-shadow: 0px 1px 9px #212121;
+    visibility: hidden;
+}

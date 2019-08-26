@@ -26,6 +26,7 @@ const servers = { 'iceServers': [{ 'urls': 'stun:stun1.l.google.com:19302'}]};
 
 let localPeerConnection;
 let remotePeerConnection;
+let endCallButton = document.getElementById('endCallButton');
 
 window.room = prompt("Enter room name:");
 
@@ -49,7 +50,6 @@ socket.on('room-created', function (room, clientId) {
     console.log(`Message from client: Joined room ${room} as initiator`)
     isInitiator = true;
     clientID = clientId;
-    // createPeerConnection();
 });
 
 // if joined room
@@ -57,7 +57,6 @@ socket.on('room-joined', function (room, clientId) {
     console.log(`Message from client: Joined room ${room} as non-initiator`)
     isInitiator = false;
     clientID = clientId;
-    // createPeerConnection();
 })
 
 // on ready event - send iceCandidate
@@ -90,13 +89,33 @@ socket.on('answer-received', function (clientId, description) {
         setRemoteDescription(description);
         socket.emit('initiate-call', room);
     }
-})
+});
+
+
+// addIceCandidate
+socket.on('peer-icecandidate', function (clientId, iceCandidate) {
+    console.log(`${clientID} adding peer icecandidate`);
+    if (clientID !== clientId) {
+        localPeerConnection.addIceCandidate(iceCandidate)
+            .then(handleConnectionSuccess)
+            .catch((error) => {
+                handleConnectionFailure(error);
+            });
+    }
+});
+
+
+// peer-ready event
+socket.on('peer-ready', function () {
+    console.log('Message from client: peers ready');
+});
 
 
 function createPeerConnection() {
     localPeerConnection = new RTCPeerConnection(servers);
     localPeerConnection.addEventListener('icecandidate', handleConnection);
     localPeerConnection.addEventListener('addstream', gotRemoteMediaStream);
+    localPeerConnection.addEventListener('iceconnectionstatechange', handleConnectionChange);
 
     navigator.mediaDevices.getUserMedia(mediaStreamConstraints)
         .then(gotLocalMediaStream).catch(handleLocalMediaStreamError);
@@ -160,37 +179,22 @@ function handleConnection(event) {
 // on icecandidates-received event both users have sent their 
 // respective ice-candidates to server and we are ready to 
 // add the remote peer's ice-candidate to our peer connection
-socket.on('icecandidates-received', function (icecandidatesDict) {
-    console.log('Message from client: peers icecandidate received from server');
-    for (var client in Object.keys(icecandidatesDict)) {
-        if (client !== clientID) {
-            localPeerConnection.addIceCandidate(icecandidatesDict[client][iceCandidate])
-                .then(handleConnectionSuccess)
-                .catch((error) => {
-                    handleConnectionFailure(error);
-                });
-        }
-    }
-})
+// socket.on('icecandidates-received', function (icecandidatesDict) {
+//     console.log('Message from client: peers icecandidate received from server');
+//     for (var client in Object.keys(icecandidatesDict)) {
+//         if (client !== clientID) {
+//             localPeerConnection.addIceCandidate(icecandidatesDict[client][iceCandidate])
+//                 .then(handleConnectionSuccess)
+//                 .catch((error) => {
+//                     handleConnectionFailure(error);
+//                 });
+//         }
+//     }
+// })
 
-
-// addIceCandidate
-socket.on('peer-icecandidate', function (clientId, iceCandidate) {
-    console.log(`${clientID} adding peer icecandidate`);
-    if (clientID !== clientId) {
-        localPeerConnection.addIceCandidate(iceCandidate)
-            .then(handleConnectionSuccess)
-            .catch((error) => {
-                handleConnectionFailure(error);
-            });
-    }
-});
-
-
-// peer-ready event
-socket.on('peer-ready', function () {
-    console.log('Message from client: peers ready');
-});
+function handleConnectionChange(event) {
+    console.log('Message from client: ICE state change event: ', event);
+}
 
 
 function gotLocalMediaStream(mediaStream) {
@@ -217,7 +221,19 @@ function gotRemoteMediaStream(event) {
     const mediaStream = event.stream;
     remoteVideo.srcObject = mediaStream;
     remoteStream = mediaStream;
+
+    endCallButton.style.visibility = 'visible';
+    endCallButton.addEventListener('click', endCall);
+
     console.log('Message from client: Remote peer connection received remote stream.');
+}
+
+
+function endCall() {
+    localPeerConnection.close();
+    localPeerConnection = null;
+    remoteVideo.style.visibility = 'hidden';
+    endCallButton.style.visibility = 'hidden';
 }
 
 
