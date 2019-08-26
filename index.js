@@ -14,7 +14,7 @@ var _rooms = {};
 var fileServer = new (nodeStatic.Server)({
     headers: {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET',
+      'Access-Control-Allow-Methods': 'GET, POST',
       'Access-Control-Allow-Headers': 'Content-Type'
     }
   });
@@ -38,7 +38,7 @@ io.sockets.on('connection', function (socket) {
     // if 1 join
     // else emit room-full event 
     socket.on('create or join', function (room) {
-        console.log(`Received request to create or join room from ${socket.id}`);
+        //console.log(`Received request to create or join room from ${socket.id}`);
         log(`Received request to create or join room from ${socket.id}`);
 
         var clientsInRoom = io.sockets.adapter.rooms[room];
