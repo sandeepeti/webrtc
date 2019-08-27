@@ -29,8 +29,8 @@ let numPeers = 0;
 let peerMappings = {};
 
 // const servers = { 'iceServers': [{ 'urls': 'stun:localhost:8080' }] };
-// const servers = { 'iceServers': [{ 'urls': 'stun:stun1.l.google.com:19302' }] };
-const servers = null;
+const servers = { 'iceServers': [{ 'urls': 'stun:stun1.l.google.com:19302' }] };
+// const servers = null;
 
 let localPeerConnection;
 let remotePeerConnection;
@@ -74,32 +74,40 @@ socket.on('room-full', function (room) {
 
 
 socket.on('peer-joined', function (room, peerId) {
-    console.log(`Message from client: ${clientID} creating offer and sending to ${peerId}`);
-    createMultiPeerConnection(room, peerId, null);
-    // localPeerConnections[peerId].createOffer(offerOptions)
-    //     .then((event) => createdOffer(event, room, peerId)).catch(setSessionDescriptionError);
+    //console.log(`Message from client: ${clientID} creating offer and sending to ${peerId}`);
+    //createMultiPeerConnection(room, peerId, null);
+    // socket.emit('handshake-request', clientID, peerId);
+    createMultiPeerConnection(room, peerId, false);
 });
 
-
-// offer-received event
-socket.on('offer-received', function (room, peerId, description) {
-    console.log(`Message from client ${clientID}: Offer received from ${peerId}`)
-    createMultiPeerConnection(room, peerId, description);
-    // setRemoteDescription(description, peerId);
-
-    // // create answer
-    // localPeerConnections[peerId].createAnswer()
-    //     .then((event) => createdAnswer(event, peerId))
-    //     .catch(setSessionDescriptionError);
+socket.on('handshake-request', function (peerId) {
+    createMultiPeerConnection(room, peerId, true);
 });
 
+socket.on('handshake-response', function (peerId) {
+    console.log(`Message from client: creating offer`);
+    localPeerConnections[peerId].createOffer(offerOptions)
+        .then((event) => createdOffer(event, room, peerId)).catch(setSessionDescriptionError);
+})
 
-function gotLocalMediaStream(mediaStream, room, peerId, description) {
+function createMultiPeerConnection(room, peerId, isRequest) {
+    console.log(`Message from client (${clientID}): creating RTCPeerConnection`);
+    localPeerConnections[peerId] = new RTCPeerConnection(servers);
+    localPeerConnections[peerId].addEventListener('icecandidate', (event) => handleMultiConnection(event, peerId));
+    localPeerConnections[peerId].addEventListener('addstream', gotRemoteMediaStream);
+    localPeerConnections[peerId].addEventListener('iceconnectionstatechange', handleConnectionChange);
+
+    navigator.mediaDevices.getUserMedia(mediaStreamConstraints)
+        .then((mediaStream) => gotLocalMediaStream(mediaStream, room, peerId, isRequest)).catch(handleLocalMediaStreamError);
+    console.log('Message from client: Requesting local stream');
+}
+
+function gotLocalMediaStream(mediaStream, room, peerId, isRequest) {
     console.log(`Message from client(${clientID}): adding local stream`);
     localVideo.srcObject = mediaStream;
     localStream = mediaStream;
     localPeerConnections[peerId].addStream(mediaStream);
-    localPeerConnections[peerId].addEventListener('addstream', gotRemoteMediaStream);
+    // localPeerConnections[peerId].addEventListener('addstream', gotRemoteMediaStream);
 
     const videoTracks = localStream.getVideoTracks();
     const audioTracks = localStream.getAudioTracks();
@@ -110,22 +118,46 @@ function gotLocalMediaStream(mediaStream, room, peerId, description) {
         console.log(`Message from client Using audio device: ${audioTracks[0].label}.`);
     }
 
-    // emit event that stream added
-    // socket.emit('local-stream-added', room, isInitiator);
-    if (description !== null) {
-        console.log(`Message from client: creating answer`);
-        setRemoteDescription(description, peerId);
-
-        // create answer
-        localPeerConnections[peerId].createAnswer()
-            .then((event) => createdAnswer(event, peerId))
-            .catch(setSessionDescriptionError);
+    if (isRequest) {
+        console.log(`Message from client(${clientID}): Sending handshake-response to ${peerId}`);
+        socket.emit('handshake-response', clientID, peerId);
     } else {
-        console.log(`Message from client: creating offer`);
-        localPeerConnections[peerId].createOffer(offerOptions)
-            .then((event) => createdOffer(event, room, peerId)).catch(setSessionDescriptionError);
+        // console.log(`Message from client: creating offer`);
+        // localPeerConnections[peerId].createOffer(offerOptions)
+        //     .then((event) => createdOffer(event, room, peerId)).catch(setSessionDescriptionError);
+        console.log(`Message from client(${clientID}): Sending handshake-request to ${peerId}`);
+        socket.emit('handshake-request', clientID, peerId);
     }
 }
+
+// createdOffer 
+function createdOffer(description, room, peerId) {
+    console.log(`Message from client(${clientID}): created offer and sending to ${peerId}`);
+    localPeerConnections[peerId].setLocalDescription(description)
+        .then(() => {
+            console.log(`Message from client${clientID}: localDescription set`);
+            socket.emit('offer', room, clientID, peerId, description);
+        })
+        .catch((error) => {
+            console.error('Message from client: Error setting localDescription', error);
+        });
+}
+
+// offer-received event
+socket.on('offer-received', function (room, peerId, description) {
+    console.log(`Message from client ${clientID}: Offer received from ${peerId}`)
+    //createMultiPeerConnection(room, peerId, description);
+
+    console.log(`Message from client: creating answer`);
+    setRemoteDescription(description, peerId);
+
+    // create answer
+    localPeerConnections[peerId].createAnswer()
+        .then((event) => createdAnswer(event, peerId))
+        .catch(setSessionDescriptionError);
+});
+
+
 
 // answer-received event
 socket.on('answer-received', function (peerId, description) {
@@ -154,34 +186,6 @@ socket.on('peer-ready', function () {
 });
 
 
-// function createPeerConnection(room) {
-//     console.log(`Message from client (${clientID}): creating RTCPeerConnection`);
-//     localPeerConnection = new RTCPeerConnection(servers);
-//     localPeerConnection.addEventListener('icecandidate', handleConnection);
-//     localPeerConnection.addEventListener('addstream', gotRemoteMediaStream);
-//     localPeerConnection.addEventListener('iceconnectionstatechange', handleConnectionChange);
-
-//     if (!localStream) {
-//         navigator.mediaDevices.getUserMedia(mediaStreamConstraints)
-//             .then((mediaStream) => gotLocalMediaStream(mediaStream, room)).catch(handleLocalMediaStreamError);
-//         console.log('Message from client: Requesting local stream');
-//     }
-// }
-
-
-function createMultiPeerConnection(room, peerId, description) {
-    console.log(`Message from client (${clientID}): creating RTCPeerConnection`);
-    localPeerConnections[peerId] = new RTCPeerConnection(servers);
-    localPeerConnections[peerId].addEventListener('icecandidate', (event) => handleMultiConnection(event, peerId));
-    localPeerConnections[peerId].addEventListener('addstream', gotRemoteMediaStream);
-    localPeerConnections[peerId].addEventListener('iceconnectionstatechange', handleConnectionChange);
-
-    navigator.mediaDevices.getUserMedia(mediaStreamConstraints)
-        .then((mediaStream) => gotLocalMediaStream(mediaStream, room, peerId, description)).catch(handleLocalMediaStreamError);
-    console.log('Message from client: Requesting local stream');
-}
-
-
 // setRemoteDescription
 function setRemoteDescription(description, peerId) {
     console.log(`Message from client (${clientID}): setting remote description ${description}`);
@@ -191,19 +195,6 @@ function setRemoteDescription(description, peerId) {
         })
         .catch((error) => {
             console.error('Message from client: remote description setting failed');
-        });
-}
-
-// createdOffer 
-function createdOffer(description, room, peerId) {
-    console.log(`Message from client(${clientID}): created offer and sending to ${peerId}`);
-    localPeerConnections[peerId].setLocalDescription(description)
-        .then(() => {
-            console.log(`Message from client${clientID}: localDescription set`);
-            socket.emit('offer', room, clientID, peerId, description);
-        })
-        .catch((error) => {
-            console.error('Message from client: Error setting localDescription', error);
         });
 }
 

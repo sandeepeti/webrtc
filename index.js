@@ -82,6 +82,16 @@ io.sockets.on('connection', function (socket) {
         }
     }
 
+    // handshake-request event
+    socket.on('handshake-request', function(clientId, peerId) {
+        socket.to(peerId).emit('handshake-request', clientId);
+    });
+
+    // handshake-response event
+    socket.on('handshake-response', function(clientId, peerId) {
+        socket.to(peerId).emit('handshake-response', clientId);
+    });
+
     // offer received
     socket.on('offer', function (room, clientId, peerId, description) {
         log(`offer created by ${clientId} and sending to ${peerId}`);
