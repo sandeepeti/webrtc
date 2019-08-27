@@ -27,15 +27,10 @@ var io = socketIO.listen(app);
 
 io.sockets.on('connection', function (socket) {
 
-    function log(room) {
+    function log() {
         var array = ['Message from Server:'];
         array.push.apply(array, arguments);
-        if (room) {
-            console.log(array);
-            io.sockets.in(room).emit('log', array);
-        } else {
-            socket.emit('log', array);
-        }
+        socket.emit('log', array);
     }
 
     // create or join room
@@ -57,50 +52,44 @@ io.sockets.on('connection', function (socket) {
 
             // create key with room name
             _rooms[room] = 0;
-            addPeersToRooms(room);
             socket.emit('room-created', room, socket.id);
-        } else if (numClients < 3) {
+        } else if (numClients === 1) {
             log(`Client ID ${socket.id} joined room ${room}`);
             socket.join(room);
-            addPeersToRooms(room);
             socket.emit('room-joined', room, socket.id);
-            // emit to all other users that peer joined room 
-            // so they could create offer
-            const peerId = socket.id;
-            socket.to(room).emit('peer-joined', room, peerId);
         } else {
             socket.emit('room-full', room);
         }
     });
 
     // localstream added
-    function addPeersToRooms(room) {
+    socket.on('local-stream-added', function(room, isInitiator) {
         _rooms[room] += 1
 
-        if (_rooms[room] === 3) {
+        if (_rooms[room] === 2) {
             io.sockets.in(room).emit('ready');
         }
-    }
+    })
 
     // offer received
-    socket.on('offer', function (room, clientId, peerId, description) {
-        log(`offer created by ${clientId} and sending to ${peerId}`);
+    socket.on('offer', function (room, clientId, description) {
+        log(`offer created by ${clientId}`)
         // _rooms[room][clientId][description] = description;
-        socket.to(peerId).emit('offer-received', room, clientId, description);
+        io.sockets.to(room).emit('offer-received', clientId, description);
     });
 
 
     // answer received
-    socket.on('answer', function (room, clientId, peerId, description) {
-        log(`answer created by ${clientId} and sending to ${peerId}`);
+    socket.on('answer', function (room, clientId, description) {
+        log(`answer created by ${clientId}`)
         // _rooms[room][clientId][description] = description;
-        socket.to(peerId).emit('answer-received', clientId, description);
+        io.sockets.to(room).emit('answer-received', clientId, description);
     });
 
 
-    socket.on('ice-candidate', function (room, clientId, peerId, iceCandidate) {
+    socket.on('ice-candidate', function (room, clientId, iceCandidate) {
         log(`client ${clientId}'s icecandidate received`);
-        socket.to(peerId).emit('peer-icecandidate', clientId, peerId, iceCandidate);
+        socket.to(room).emit('peer-icecandidate', clientId, iceCandidate);
     });
 
     socket.on('initiate-call', function(room) {

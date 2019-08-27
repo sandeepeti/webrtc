@@ -1,0 +1,9 @@
+{
+  "name": "webrtc",
+  "version": "0.0.1",
+  "description": "WebRTC",
+  "dependencies": {
+    "node-static": "^0.7.11",
+    "socket.io": "^2.2.0"
+  }
+}

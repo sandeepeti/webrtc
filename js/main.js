@@ -29,8 +29,8 @@ let numPeers = 0;
 let peerMappings = {};
 
 // const servers = { 'iceServers': [{ 'urls': 'stun:localhost:8080' }] };
-const servers = { 'iceServers': [{ 'urls': 'stun:stun1.l.google.com:19302' }] };
-//const servers = null;
+// const servers = { 'iceServers': [{ 'urls': 'stun:stun1.l.google.com:19302' }] };
+const servers = null;
 
 let localPeerConnection;
 let remotePeerConnection;
@@ -172,7 +172,7 @@ socket.on('peer-ready', function () {
 function createMultiPeerConnection(room, peerId, description) {
     console.log(`Message from client (${clientID}): creating RTCPeerConnection`);
     localPeerConnections[peerId] = new RTCPeerConnection(servers);
-    localPeerConnections[peerId].addEventListener('icecandidate', handleMultiConnection);
+    localPeerConnections[peerId].addEventListener('icecandidate', (event) => handleMultiConnection(event, peerId));
     localPeerConnections[peerId].addEventListener('addstream', gotRemoteMediaStream);
     localPeerConnections[peerId].addEventListener('iceconnectionstatechange', handleConnectionChange);
 
