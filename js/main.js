@@ -14,6 +14,7 @@ const mediaStreamConstraints = {
 
 const offerOptions = {
     offerToReceiveVideo: 1,
+    offerToReceiveAudio: 1,
 };
 
 let localVideo = document.getElementById('localVideo');
@@ -28,8 +29,8 @@ let remoteStream2;
 let numPeers = 0;
 let peerMappings = {};
 
-// const servers = { 'iceServers': [{ 'urls': 'stun:localhost:8080' }] };
-const servers = { 'iceServers': [{ 'urls': 'stun:stun1.l.google.com:19302' }] };
+const servers = { 'iceServers': [{ 'urls': 'stun:localhost:8080' }] };
+// const servers = { 'iceServers': [{ 'urls': 'stun:stun1.l.google.com:19302' }], 'bundlePolicy': 'max-compat', };
 // const servers = null;
 
 let localPeerConnection;
@@ -49,7 +50,14 @@ socket.on('log', function (array) {
 if (room !== "" && room !== null) {
     console.log(`Message from client: Asking to create or join room ${room}`);
     //createPeerConnection(room);
-    socket.emit('create or join', room);
+    // create local media stream
+    navigator.mediaDevices.getUserMedia(mediaStreamConstraints)
+        .then((stream) => {
+            localStream = stream;
+            localVideo.srcObject = stream;
+            socket.emit('create or join', room);
+        })
+        .catch(handleLocalMediaStreamError);
 }
 
 
@@ -58,6 +66,7 @@ socket.on('room-created', function (room, clientId) {
     console.log(`Message from client: Joined room ${room} as initiator`)
     isInitiator = true;
     clientID = clientId;
+    
 });
 
 // if joined room
@@ -93,30 +102,14 @@ socket.on('handshake-response', function (peerId) {
 function createMultiPeerConnection(room, peerId, isRequest) {
     console.log(`Message from client (${clientID}): creating RTCPeerConnection`);
     localPeerConnections[peerId] = new RTCPeerConnection(servers);
+    localPeerConnections[peerId].addStream(localStream);
     localPeerConnections[peerId].addEventListener('icecandidate', (event) => handleMultiConnection(event, peerId));
     localPeerConnections[peerId].addEventListener('addstream', gotRemoteMediaStream);
     localPeerConnections[peerId].addEventListener('iceconnectionstatechange', handleConnectionChange);
 
-    navigator.mediaDevices.getUserMedia(mediaStreamConstraints)
-        .then((mediaStream) => gotLocalMediaStream(mediaStream, room, peerId, isRequest)).catch(handleLocalMediaStreamError);
-    console.log('Message from client: Requesting local stream');
-}
-
-function gotLocalMediaStream(mediaStream, room, peerId, isRequest) {
-    console.log(`Message from client(${clientID}): adding local stream`);
-    localVideo.srcObject = mediaStream;
-    localStream = mediaStream;
-    localPeerConnections[peerId].addStream(mediaStream);
-    // localPeerConnections[peerId].addEventListener('addstream', gotRemoteMediaStream);
-
-    const videoTracks = localStream.getVideoTracks();
-    const audioTracks = localStream.getAudioTracks();
-    if (videoTracks.length > 0) {
-        console.log(`Message from client: Using video device: ${videoTracks[0].label}.`);
-    }
-    if (audioTracks.length > 0) {
-        console.log(`Message from client Using audio device: ${audioTracks[0].label}.`);
-    }
+    // navigator.mediaDevices.getUserMedia(mediaStreamConstraints)
+    //     .then((mediaStream) => gotLocalMediaStream(mediaStream, room, peerId, isRequest)).catch(handleLocalMediaStreamError);
+    // console.log('Message from client: Requesting local stream');
 
     if (isRequest) {
         console.log(`Message from client(${clientID}): Sending handshake-response to ${peerId}`);
@@ -129,6 +122,23 @@ function gotLocalMediaStream(mediaStream, room, peerId, isRequest) {
         socket.emit('handshake-request', clientID, peerId);
     }
 }
+
+// function gotLocalMediaStream(mediaStream, room, peerId, isRequest) {
+//     console.log(`Message from client(${clientID}): adding local stream`);
+//     // localVideo.srcObject = mediaStream;
+//     // localStream = mediaStream;
+//     localPeerConnections[peerId].addEventListener('addstream', gotRemoteMediaStream);
+//     //localPeerConnections[peerId].addStream(mediaStream);
+
+//     const videoTracks = localStream.getVideoTracks();
+//     const audioTracks = localStream.getAudioTracks();
+//     if (videoTracks.length > 0) {
+//         console.log(`Message from client: Using video device: ${videoTracks[0].label}.`);
+//     }
+//     if (audioTracks.length > 0) {
+//         console.log(`Message from client Using audio device: ${audioTracks[0].label}.`);
+//     }
+// }
 
 // createdOffer 
 function createdOffer(description, room, peerId) {
@@ -170,8 +180,15 @@ socket.on('answer-received', function (peerId, description) {
 // addIceCandidate
 socket.on('peer-icecandidate', function (clientId, peerId, iceCandidate) {
     console.log(`Message from client (${clientID}): adding peer icecandidate`, iceCandidate);
-    if (clientID !== peerId) {
-        localPeerConnections[peerId].addIceCandidate(iceCandidate)
+    
+    // if (iceCandidate.candidate === "" | iceCandidate.candidate === null) {
+    //     console.log(`Message from client(${clientID}): adding local stream`);
+    //     localPeerConnections[peerId].addStream(localStream);
+    // }
+
+    console.log(`Message from client(${clientID}): received icecandidate from ${clientId}`);
+    if (clientID !== clientId) {
+        localPeerConnections[clientId].addIceCandidate(iceCandidate)
             .then(handleConnectionSuccess)
             .catch((error) => {
                 handleConnectionFailure(error);

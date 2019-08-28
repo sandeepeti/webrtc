@@ -1,4 +1,4 @@
-'use strict';
+    'use strict';
 
 // if isInitiator, then he will create offer for video call
 // else he will create answer
