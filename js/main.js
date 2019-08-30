@@ -29,9 +29,9 @@ let remoteStream2;
 let numPeers = 0;
 let peerMappings = {};
 
-const servers = { 'iceServers': [{ 'urls': 'stun:localhost:8080' }] };
+//const servers = { 'iceServers': [{ 'urls': 'stun:localhost:8080' }] };
 // const servers = { 'iceServers': [{ 'urls': 'stun:stun1.l.google.com:19302' }], 'bundlePolicy': 'max-compat', };
-// const servers = null;
+const servers = null;
 
 let localPeerConnection;
 let remotePeerConnection;
@@ -104,7 +104,7 @@ function createMultiPeerConnection(room, peerId, isRequest) {
     localPeerConnections[peerId] = new RTCPeerConnection(servers);
     localPeerConnections[peerId].addStream(localStream);
     localPeerConnections[peerId].addEventListener('icecandidate', (event) => handleMultiConnection(event, peerId));
-    localPeerConnections[peerId].addEventListener('addstream', gotRemoteMediaStream);
+    localPeerConnections[peerId].addEventListener('addstream', (event) => gotRemoteMediaStream(event, peerId));
     localPeerConnections[peerId].addEventListener('iceconnectionstatechange', handleConnectionChange);
 
     // navigator.mediaDevices.getUserMedia(mediaStreamConstraints)
@@ -256,18 +256,26 @@ function handleConnectionChange(event) {
 }
 
 
-function gotRemoteMediaStream(event) {
+function gotRemoteMediaStream(event, peerId) {
     console.log(`Message from client(${clientID}): remote media stream received`);
     const mediaStream = event.stream;
-    if (!remoteStream1) {
-        console.log(`Message from client(${clientID}): remote stream from peer1 received`);
-        remoteVideo1.srcObject = mediaStream;
-        remoteStream1 = mediaStream;
-    } else {
-        console.log(`Message from client(${clientID}): remote stream from peer2 received`);
-        remoteVideo2.srcObject = mediaStream;
-        remoteStream2 = mediaStream;
-    }
+
+    // create a video element and add to videos div
+    let videoDiv = document.getElementById('videos');
+    let videoElem = document.createElement('video');
+    videoElem.srcObject = mediaStream;
+    videoElem.autoplay = true;
+    videoDiv.appendChild(videoElem);
+
+    // if (!remoteStream1) {
+    //     console.log(`Message from client(${clientID}): remote stream from peer1 received`);
+    //     remoteVideo1.srcObject = mediaStream;
+    //     remoteStream1 = mediaStream;
+    // } else {
+    //     console.log(`Message from client(${clientID}): remote stream from peer2 received`);
+    //     remoteVideo2.srcObject = mediaStream;
+    //     remoteStream2 = mediaStream;
+    // }
 
     // endCallButton.style.visibility = 'visible';
     // endCallButton.addEventListener('click', endCall);

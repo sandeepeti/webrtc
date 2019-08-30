@@ -59,7 +59,7 @@ io.sockets.on('connection', function (socket) {
             _rooms[room] = 0;
             addPeersToRooms(room);
             socket.emit('room-created', room, socket.id);
-        } else if (numClients < 3) {
+        } else if (numClients < 5) {
             log(`Client ID ${socket.id} joined room ${room}`);
             socket.join(room);
             addPeersToRooms(room);

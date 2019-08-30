@@ -5,10 +5,10 @@
 }
 
 
-.videos {
-    width: 100vw;
-    height: 100vh;
-    /* background-color: rebeccapurple; */
+#videos {
+    display: flex;
+    flex-basis: max-content;
+    flex-flow: row;
 }
 
 #localVideo {
